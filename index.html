@@ -293,10 +293,17 @@ function evaluate(text,final){
   const S=norm(text).split(' ').filter(Boolean);
   const off=Math.max(0,offset());
   const sub=align(expN.slice(off),S);
+  const states=new Array(off).fill(null).concat(sub.states);
+  let upto=off+sub.upto;
+  if(!final){
+    /* okurken: son doğru kelimeden sonrasını henüz hüküm verme */
+    let lo=off; for(let i=off;i<upto;i++) if(states[i]==='ok') lo=i+1;
+    upto=lo;
+  }
   result={
-    states:new Array(off).fill(null).concat(sub.states),
+    states,
     heard:new Array(off).fill('').concat(sub.heard),
-    upto:off+sub.upto, off
+    upto, off
   };
   paint(final); counts(); mistakes();
 }
@@ -371,8 +378,17 @@ function startRec(){
   base='';sess='';result=null;paint(false);counts();mistakes();
   rec=new SR(); rec.lang='ar-SA'; rec.continuous=true; rec.interimResults=true;
   rec.onresult=e=>{
-    let t=''; for(let k=0;k<e.results.length;k++)t+=e.results[k][0].transcript+' ';
-    sess=t; evaluate(base+' '+sess,false);
+    /* Android Chrome bazen her sonucu önceki metni de içerecek şekilde tekrar gönderir; tekrarları ele */
+    let segs=[];
+    for(let k=0;k<e.results.length;k++){
+      const t=e.results[k][0].transcript.trim(); if(!t)continue;
+      const n=norm(t), all=norm(segs.join(' ')), last=segs.length?norm(segs[segs.length-1]):'';
+      if(all&&(n===all||n.startsWith(all+' '))) segs=[t];
+      else if(last&&(n===last||n.startsWith(last+' '))) segs[segs.length-1]=t;
+      else if(all&&(all===n||all.startsWith(n+' ')||all.endsWith(' '+n))) {}
+      else segs.push(t);
+    }
+    sess=segs.join(' '); evaluate(base+' '+sess,false);
   };
   rec.onerror=e=>{
     if(e.error==='not-allowed'||e.error==='service-not-allowed'){listening=false;setUI(false);note('Mikrofon izni verilmedi. Tarayıcı ayarlarından izin ver.');$('#status').textContent='Mikrofon kapalı.'}
